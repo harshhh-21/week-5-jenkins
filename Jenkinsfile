@@ -20,7 +20,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'Running application tests'
-                sh 'pytest'
+                sh 'python3 -m pytest'
             }
         }
 
