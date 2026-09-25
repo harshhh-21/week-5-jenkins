@@ -96,7 +96,8 @@ pipeline {
                         docker run -d \
                             --name ${CONTAINER_NAME} \
                             -p ${APP_PORT}:5000 \
-                            -e APP_VERSION=${IMAGE_TAG} \
+                            -e APP_VERSION=${IMAGE_TAG}
+                            -e FAIL_HEALTH=true \
                             ${IMAGE_NAME}:${IMAGE_TAG}
                     """
                 }
