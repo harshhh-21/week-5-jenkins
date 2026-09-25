@@ -26,9 +26,9 @@ def home():
 @app.route("/health")
 def health():
     return jsonify({
-        "status": "healthy",
+        "status": "failed",
         "version": APP_VERSION
-    }), 200
+    }), 500
 
 
 def add(a, b):
