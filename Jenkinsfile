@@ -1,5 +1,13 @@
 pipeline {
+
     agent any
+
+    environment {
+        IMAGE_NAME = "harshhh21/week9-cicd"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        CONTAINER_NAME = "week9-app"
+        APP_PORT = "5000"
+    }
 
     stages {
 
@@ -12,33 +20,64 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo 'Building application'
-                sh 'python3 app.py'
+                echo 'Installing Python dependencies'
+                sh 'python3 -m pip install -r requirements.txt'
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Running application tests'
-                sh 'python3 -m pytest'
+                echo 'Running automated tests'
+                sh 'python3 -m pytest -v'
             }
         }
 
-        stage('Validation') {
+        stage('Docker Build') {
             steps {
-                echo 'Validating Python syntax'
-                sh 'python3 -m py_compile app.py'
+                echo 'Building Docker image'
+
+                sh """
+                    docker build \
+                    -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                    -t ${IMAGE_NAME}:latest .
+                """
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+
+                    sh """
+                        echo "\$DOCKER_PASSWORD" | docker login \
+                        -u "\$DOCKER_USERNAME" \
+                        --password-stdin
+
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:latest
+
+                        docker logout
+                    """
+                }
             }
         }
     }
 
     post {
+
         success {
-            echo 'Pipeline completed successfully'
+            echo 'CI/CD pipeline completed successfully.'
         }
 
         failure {
-            echo 'Pipeline failed. Check Console Output'
+            echo 'Pipeline failed. Check Console Output.'
         }
     }
 }
