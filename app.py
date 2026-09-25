@@ -25,10 +25,16 @@ def home():
 
 @app.route("/health")
 def health():
+    if os.getenv("FAIL_HEALTH") == "true":
+        return jsonify({
+            "status": "failed",
+            "version": APP_VERSION
+        }), 500
+
     return jsonify({
-        "status": "failed",
+        "status": "healthy",
         "version": APP_VERSION
-    }), 500
+    }), 200
 
 
 def add(a, b):
