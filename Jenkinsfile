@@ -7,6 +7,7 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         CONTAINER_NAME = "week9-app"
         APP_PORT = "5000"
+        DEPLOY_STATE = "${WORKSPACE}/.last_successful_build"
     }
 
     stages {
@@ -76,16 +77,106 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy') {
+            steps {
+                script {
+
+                    sh '''
+                        if [ -f "$DEPLOY_STATE" ]; then
+                            cp "$DEPLOY_STATE" "$WORKSPACE/.previous_build"
+                        else
+                            echo "" > "$WORKSPACE/.previous_build"
+                        fi
+                    '''
+
+                    sh """
+                        docker rm -f ${CONTAINER_NAME} || true
+
+                        docker run -d \
+                            --name ${CONTAINER_NAME} \
+                            -p ${APP_PORT}:5000 \
+                            -e APP_VERSION=${IMAGE_TAG} \
+                            ${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                script {
+
+                    def healthResult = sh(
+                        script: """
+                            sleep 5
+                            curl --fail --silent http://localhost:${APP_PORT}/health
+                        """,
+                        returnStatus: true
+                    )
+
+                    if (healthResult != 0) {
+                        error("Health check failed")
+                    }
+
+                    echo "Health check passed for version ${IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('Record Successful Deployment') {
+            steps {
+                sh '''
+                    echo "$IMAGE_TAG" > "$DEPLOY_STATE"
+                    echo "Recorded successful deployment: $IMAGE_TAG"
+                '''
+            }
+        }
     }
 
     post {
 
-        success {
-            echo 'CI/CD pipeline completed successfully.'
+        failure {
+            script {
+
+                echo 'Pipeline failed. Checking whether rollback is possible.'
+
+                def previousBuild = ''
+
+                if (fileExists('.previous_build')) {
+                    previousBuild = readFile('.previous_build').trim()
+                }
+
+                if (previousBuild) {
+
+                    echo "Rolling back to previous successful version: ${previousBuild}"
+
+                    sh """
+                        docker rm -f ${CONTAINER_NAME} || true
+
+                        docker run -d \
+                            --name ${CONTAINER_NAME} \
+                            -p ${APP_PORT}:5000 \
+                            -e APP_VERSION=${previousBuild} \
+                            ${IMAGE_NAME}:${previousBuild}
+                    """
+
+                    sh """
+                        sleep 5
+                        curl --fail --silent http://localhost:${APP_PORT}/health
+                    """
+
+                    echo "Rollback completed successfully to version ${previousBuild}"
+
+                } else {
+
+                    echo 'No previous successful deployment found. Rollback skipped.'
+                }
+            }
         }
 
-        failure {
-            echo 'Pipeline failed. Check Console Output.'
+        success {
+            echo 'CI/CD pipeline completed successfully.'
         }
     }
 }
